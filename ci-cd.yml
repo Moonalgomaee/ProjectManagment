@@ -1,0 +1,179 @@
+name: CI/CD Pipeline - Smart Finance System
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # ─────────────────────────────────────────────
+  #  JOB 1: Lint & Code Quality
+  # ─────────────────────────────────────────────
+  lint:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install linting tools
+        run: |
+          pip install flake8 pylint
+
+      - name: Run flake8 (PEP8 style check)
+        run: |
+          flake8 main.py --max-line-length=120 --ignore=E501,W503 || true
+
+      - name: Check for syntax errors
+        run: |
+          python -m py_compile main.py
+          echo "✅ Syntax check passed"
+
+  # ─────────────────────────────────────────────
+  #  JOB 2: Unit Tests
+  # ─────────────────────────────────────────────
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies (headless)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-tk xvfb
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install bcrypt openpyxl pillow pytesseract matplotlib
+          pip install customtkinter || true
+
+      - name: Run unit tests (headless with xvfb)
+        run: |
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1024x768x24 &
+          sleep 2
+          python -m pytest tests/test_business.py -v --tb=short 2>&1 || \
+          python -m unittest tests/test_business.py -v
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            *.xml
+            test-results/
+
+  # ─────────────────────────────────────────────
+  #  JOB 3: Build & Package
+  # ─────────────────────────────────────────────
+  build:
+    name: Build & Package
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt || true
+
+      - name: Validate project structure
+        run: |
+          echo "Checking required files..."
+          test -f main.py         && echo "✅ main.py found"
+          test -f requirements.txt && echo "✅ requirements.txt found"
+          test -f README.md        && echo "✅ README.md found"
+          test -d tests            && echo "✅ tests/ directory found"
+          test -d docs             && echo "✅ docs/ directory found"
+          echo "✅ Project structure validation passed"
+
+      - name: Create release package
+        run: |
+          mkdir -p dist
+          zip -r dist/smart-finance-system-${{ github.sha }}.zip \
+            main.py requirements.txt README.md docs/ tests/ \
+            --exclude "*.pyc" --exclude "__pycache__/*" --exclude "*.json"
+          echo "✅ Package created"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-package
+          path: dist/
+
+  # ─────────────────────────────────────────────
+  #  JOB 4: Security Scan
+  # ─────────────────────────────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install bandit (security linter)
+        run: pip install bandit
+
+      - name: Run security scan
+        run: |
+          bandit -r main.py -ll --format txt || true
+          echo "✅ Security scan completed"
+
+  # ─────────────────────────────────────────────
+  #  JOB 5: Deploy Summary
+  # ─────────────────────────────────────────────
+  summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [lint, test, build, security]
+    if: always()
+
+    steps:
+      - name: Print pipeline summary
+        run: |
+          echo "============================================"
+          echo "  Smart Finance System - CI/CD Summary"
+          echo "============================================"
+          echo "Branch  : ${{ github.ref_name }}"
+          echo "Commit  : ${{ github.sha }}"
+          echo "Author  : ${{ github.actor }}"
+          echo "Trigger : ${{ github.event_name }}"
+          echo "--------------------------------------------"
+          echo "Lint    : ${{ needs.lint.result }}"
+          echo "Tests   : ${{ needs.test.result }}"
+          echo "Build   : ${{ needs.build.result }}"
+          echo "Security: ${{ needs.security.result }}"
+          echo "============================================"

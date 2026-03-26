@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Application data (user-specific, do not commit)
+users.json
+business_data.json
+business_summary.csv
+
+# Reports (auto-generated)
+Reports/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test artifacts
+*.xml
+test-results/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
